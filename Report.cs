@@ -3,6 +3,9 @@ using System.Web;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using Dapper;
+using  Newtonsoft.Json;
 
 namespace ReportGoogleBank
 {
@@ -16,29 +19,36 @@ namespace ReportGoogleBank
         }
 
         [Function("Report")]
-        public HttpResponseData Run([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "report")] HttpRequestData req)
+        public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "get", Route = "report")] HttpRequestData req)
         {
+            string connectionString = "Server=containers-us-west-32.railway.app;Port=6513;User Id=postgres;Password=MqENGILIAnexYhF0bHbR;Database=railway;";
+            TransferService service = new TransferService();
             _logger.LogInformation("C# HTTP trigger function processed a request.");
 
-            var userEmail = HttpUtility.ParseQueryString(req.Url.Query)["userEmail"];
+            var id = HttpUtility.ParseQueryString(req.Url.Query)["userId"];
+            var userId = Int32.Parse(id!);
 
-            var response = req.CreateResponse(HttpStatusCode.OK);
-            response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-
-           
-            if (userEmail != null) {
-                response.WriteString(userEmail);
-            }
-            else
-            {
-                response.StatusCode = HttpStatusCode.BadRequest;
-                response.WriteString("Error. invalid userEmail");
-            }
+           var response = req.CreateResponse(HttpStatusCode.OK);
          
-
           
+            try{
+                using var connection = new NpgsqlConnection(connectionString);
+                await connection.OpenAsync();  
+                var transfers = await service.GetTransfers(connection, userId);  
+               
+                 
+                await response.WriteAsJsonAsync(transfers);
+              
+          
+                return response;
+            } catch(Exception ex){
+                _logger.LogError($"Erro ao buscar transferências: {ex.Message}");
+                response.StatusCode = HttpStatusCode.BadGateway;
+                return response;
+            }
 
-            return response;
+
+         
         }
     }
 }
